@@ -21,16 +21,53 @@ set(IMPALA_SOURCES
     tokenlist.h
 )
 
+# We currently assume that all '*.h' files in IMPALA_SOURCES are public headers:
+set(IMPALA_PUBLIC_HEADERS ${IMPALA_SOURCES})
+list(FILTER IMPALA_PUBLIC_HEADERS INCLUDE REGEX "\\.h$")
+
 add_library(libimpala ${IMPALA_SOURCES})
-target_link_libraries(libimpala PRIVATE ${Thorin_LIBRARIES})
 set_target_properties(libimpala PROPERTIES PREFIX "")
 
+target_include_directories(libimpala PUBLIC
+    $<BUILD_INTERFACE:${IMPALA_SRC_SOURCE_DIR}>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+    ${Thorin_INCLUDE_DIRS}
+)
+
+# Thorin is exposed via the public headers of Impala, which triggers a direct
+# dependency on Thorin library in a dependent package:
+target_link_libraries(libimpala PUBLIC ${Thorin_LIBRARIES})
+
 add_executable(impala main.cpp)
-target_link_libraries(impala PRIVATE ${Thorin_LIBRARIES} libimpala)
+
 if(Thorin_HAS_LLVM_SUPPORT)
-    set(Impala_LLVM_COMPONENTS core support)
-    llvm_config(impala ${AnyDSL_LLVM_LINK_SHARED} ${Impala_LLVM_COMPONENTS})
+    target_compile_definitions(impala PRIVATE LLVM_SUPPORT)
 endif()
+
+target_link_libraries(impala PRIVATE
+    # The executable has an explicit direct dependency on Thorin, therefore we
+    # should specify ${Thorin_LIBRARIES} here even though it is also a public
+    # dependency of libimpala. Moreover, we have to put ${Thorin_LIBRARIES}
+    # before libimpala because otherwise, the produced executable crashes
+    # somewhere inside thorin/util/hash.h when both libraries are static.
+    ${Thorin_LIBRARIES}
+    libimpala
+)
+
 if(MSVC)
     set_target_properties(impala PROPERTIES LINK_FLAGS /STACK:8388608)
 endif(MSVC)
+
+# Install public headers preserving the directory layout:
+foreach(header ${IMPALA_PUBLIC_HEADERS})
+    get_filename_component(dir ${header} DIRECTORY)
+    install(FILES ${header} DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/impala/${dir})
+endforeach()
+
+# Install libraries and executables:
+install(TARGETS libimpala impala
+        EXPORT impala-targets
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+)

@@ -8,16 +8,13 @@ else()
 endif()
 
 find_package(Thorin REQUIRED)
-include_directories(${Thorin_INCLUDE_DIRS})
 
-if(Thorin_HAS_LLVM_SUPPORT)
-    add_definitions(${LLVM_DEFINITIONS})
-    add_definitions("-DLLVM_SUPPORT")
-    include_directories(SYSTEM ${LLVM_INCLUDE_DIRS})
-endif()
+# Enables '#include "impala/some_header.h"' when added to the header search
+# paths before the package is installed:
+set(IMPALA_SRC_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 
-include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 add_subdirectory(impala)
+
 if(Thorin_HAS_LLVM_SUPPORT)
     add_subdirectory(intrinsicgen)
 endif()
